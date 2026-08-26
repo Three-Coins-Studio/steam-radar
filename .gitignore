@@ -1,0 +1,17 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+.DS_Store
+Thumbs.db
+.sixth/
+
+flask.stdout.log
+flask.stderr.log
+*.log
+
+steamtube_*.csv
+steamtube_*.json
