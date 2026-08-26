@@ -26,6 +26,8 @@ Steam Radar helps game-marketing teams discover YouTube creators covering a Stea
    SEARCHAPI_KEY=your_youtube_data_api_key
    ```
 
+   Follow the [complete API key setup guide](API_KEY_SETUP.md) to create the key and apply the correct restrictions.
+
 4. Run the app:
 
    ```bash
@@ -40,7 +42,7 @@ The public team build is published at:
 
 `https://three-coins-studio.github.io/steam-radar/`
 
-GitHub Pages cannot run Flask, so the deployed build performs YouTube API requests directly from the browser. Each team member enters a YouTube Data API key when opening the site. The key is stored only in that browser tab's session storage and is not committed to this repository.
+GitHub Pages cannot run Flask, so the deployed build performs YouTube API requests directly from the browser. Each user enters their own YouTube Data API key. The key is kept only in that browser tab's session storage and is not committed to this repository.
 
 For safer use, restrict the key in Google Cloud Console:
 
@@ -49,6 +51,8 @@ For safer use, restrict the key in Google Cloud Console:
 - API restriction: **YouTube Data API v3**
 
 The local Flask workflow continues to read `SEARCHAPI_KEY` from `.env`.
+
+See [YouTube Data API Key Setup for Steam Radar](API_KEY_SETUP.md) for project creation, browser and local key restrictions, testing, quota, troubleshooting, and rotation.
 
 ## Data and outreach
 
