@@ -53,6 +53,11 @@
     .btn:disabled { opacity: .5; cursor: not-allowed; }
     .hint { font-size: .73rem; color: var(--muted); }
     .hint code { background: var(--card); padding: 2px 6px; border-radius: 4px; font-size: .71rem; color: var(--accent); }
+    .api-key-panel { display: none; margin-top: 14px; padding: 12px; background: rgba(255,165,2,.06); border: 1px solid rgba(255,165,2,.25); border-radius: var(--radius); }
+    .api-key-panel.visible { display: block; }
+    .api-key-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .api-key-row .url-input { min-width: 260px; }
+    .api-key-note { margin-top: 7px; color: var(--muted); font-size: .7rem; line-height: 1.45; }
 
     /* ── Filter grid ── */
     .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 16px; }
@@ -241,6 +246,14 @@
       <button class="btn btn-primary" id="searchBtn" onclick="runScrape()">Search</button>
     </div>
     <p class="hint">Example: <code>https://store.steampowered.com/app/1091500/Cyberpunk_2077/</code></p>
+    <div class="api-key-panel" id="apiKeyPanel">
+      <div class="filter-label" style="margin-bottom:7px">YouTube Data API key for this browser session</div>
+      <div class="api-key-row">
+        <input class="url-input" id="pageApiKey" type="password" placeholder="Paste a restricted YouTube API key" autocomplete="off" oninput="saveSessionApiKey()" />
+        <button class="btn-outline" type="button" onclick="toggleApiKeyVisibility()">Show / hide</button>
+      </div>
+      <p class="api-key-note">The key stays in this browser tab and is never committed to GitHub. Restrict it in Google Cloud to the YouTube Data API and this site’s GitHub Pages address.</p>
+    </div>
   </div>
 
   <!-- Filters panel (hidden until results load) -->
@@ -452,6 +465,7 @@
 </div>
 <script>
   const API_BASE = window.location.origin;
+  const IS_STATIC_HOST = window.location.hostname.endsWith("github.io") || new URLSearchParams(window.location.search).has("static");
   let allVideos = [], deletedIds = new Set(), selectedEmails = new Set(), gameName = "", progressTimer = null;
 
   const F = {
@@ -816,6 +830,130 @@
     dl([headers.join(","), ...rows].join("\n"), `steamtube_${gameName}_selected_emails.csv`, "text/csv");
   }
 
+  /* ─── GitHub Pages mode ──────────────────────────────────────────────── */
+  function saveSessionApiKey() {
+    const key = document.getElementById("pageApiKey").value.trim();
+    if (key) sessionStorage.setItem("steamtube_youtube_api_key", key);
+    else sessionStorage.removeItem("steamtube_youtube_api_key");
+  }
+
+  function toggleApiKeyVisibility() {
+    const input = document.getElementById("pageApiKey");
+    input.type = input.type === "password" ? "text" : "password";
+  }
+
+  function extractStaticGameName(steamUrl) {
+    const match = steamUrl.match(/\/app\/\d+\/([^/?#]+)/i);
+    if (match) return decodeURIComponent(match[1]).replace(/_/g," ").trim();
+    const idMatch = steamUrl.match(/\/app\/(\d+)/i);
+    if (idMatch) return idMatch[1];
+    throw new Error("Could not extract the game name. Use a valid Steam store URL.");
+  }
+
+  function staticPublishedAfter(dateFilter) {
+    const days = {week:7, month:30, year:365}[dateFilter];
+    return days ? new Date(Date.now() - days*86400000).toISOString().replace(/\.\d{3}Z$/,"Z") : "";
+  }
+
+  function staticDurationSeconds(duration) {
+    const match = String(duration||"").match(/^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+    if (!match) return 0;
+    return Number(match[1]||0)*86400 + Number(match[2]||0)*3600 + Number(match[3]||0)*60 + Number(match[4]||0);
+  }
+
+  function staticExtractEmail(text) {
+    return String(text||"").match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/)?.[0] || null;
+  }
+
+  function staticChunks(list, size=50) {
+    const result = [];
+    for (let i=0; i<list.length; i+=size) result.push(list.slice(i,i+size));
+    return result;
+  }
+
+  async function youtubeRequest(resource, params, apiKey) {
+    const url = new URL(`https://www.googleapis.com/youtube/v3/${resource}`);
+    Object.entries({...params,key:apiKey}).forEach(([key,value]) => {
+      if (value !== "" && value != null) url.searchParams.set(key,String(value));
+    });
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || `YouTube API request failed (${response.status}).`);
+    return data;
+  }
+
+  async function searchYouTubeFromBrowser(steamUrl, maxResults, dateFilter, language, apiKey) {
+    if (!steamUrl.includes("steampowered.com")) throw new Error("Please provide a valid Steam store URL.");
+    const staticGameName = extractStaticGameName(steamUrl);
+    const publishedAfter = staticPublishedAfter(dateFilter);
+    const videoItems = [];
+    let pageToken = "";
+
+    for (let page=0; page<Math.ceil(maxResults/50); page++) {
+      const response = await youtubeRequest("search", {
+        q:`${staticGameName} gameplay`, part:"id,snippet", type:"video",
+        maxResults:Math.min(50,maxResults-videoItems.length), safeSearch:"none",
+        relevanceLanguage:language!=="any"?language:"",
+        publishedAfter, pageToken,
+      }, apiKey);
+      videoItems.push(...(response.items||[]));
+      pageToken = response.nextPageToken || "";
+      if (!pageToken || videoItems.length >= maxResults) break;
+    }
+
+    const uniqueItems = [];
+    const seenVideos = new Set();
+    for (const item of videoItems) {
+      const id = item.id?.videoId;
+      if (id && !seenVideos.has(id)) { seenVideos.add(id); uniqueItems.push(item); }
+    }
+
+    const channelInfo = new Map();
+    const channelIds = [...new Set(uniqueItems.map(item=>item.snippet?.channelId).filter(Boolean))];
+    for (const ids of staticChunks(channelIds)) {
+      const response = await youtubeRequest("channels", {part:"snippet,brandingSettings,statistics",id:ids.join(","),maxResults:50}, apiKey);
+      for (const channel of response.items||[]) {
+        const snippet = channel.snippet||{}, branding = channel.brandingSettings?.channel||{}, stats = channel.statistics||{};
+        channelInfo.set(channel.id, {
+          email:staticExtractEmail(`${snippet.description||""} ${branding.keywords||""}`),
+          country:snippet.country||"", subscriber_count:stats.subscriberCount||"N/A",
+        });
+      }
+    }
+
+    const statsInfo = new Map();
+    const videoIds = uniqueItems.map(item=>item.id.videoId);
+    for (const ids of staticChunks(videoIds)) {
+      const response = await youtubeRequest("videos", {part:"statistics,contentDetails",id:ids.join(",")}, apiKey);
+      for (const video of response.items||[]) {
+        statsInfo.set(video.id, {...(video.statistics||{}),duration_seconds:staticDurationSeconds(video.contentDetails?.duration)});
+      }
+    }
+
+    const videos = uniqueItems.slice(0,maxResults).map(item => {
+      const videoId = item.id.videoId, snippet = item.snippet||{}, channelId = snippet.channelId;
+      const channel = channelInfo.get(channelId)||{}, stats = statsInfo.get(videoId)||{};
+      const views = Number(stats.viewCount||0), likes = Number(stats.likeCount||0), comments = Number(stats.commentCount||0);
+      const thumbs = snippet.thumbnails||{};
+      return {
+        video_id:videoId, title:snippet.title||"",
+        thumbnail:thumbs.maxres?.url||thumbs.high?.url||thumbs.medium?.url||thumbs.default?.url||"",
+        channel_name:snippet.channelTitle||"", channel_id:channelId,
+        channel_url:`https://www.youtube.com/channel/${channelId}`,
+        video_url:`https://www.youtube.com/watch?v=${videoId}`,
+        published_at:snippet.publishedAt||"", description:snippet.description||"",
+        email:channel.email||null, country:channel.country||"", view_count:views,
+        like_count:likes, comment_count:comments,
+        like_ratio:views?Math.round((likes/views*100)*100)/100:0,
+        duration_seconds:stats.duration_seconds||0,
+        subscriber_count:channel.subscriber_count||"N/A",
+        is_short:(stats.duration_seconds||0)>0 && stats.duration_seconds<=60,
+      };
+    });
+
+    return {game_name:staticGameName,total:videos.length,date_filter:dateFilter,videos};
+  }
+
   /* ─── main search ─────────────────────────────────────────────────────── */
   async function runScrape() {
     const steamUrl   = document.getElementById("steamUrl").value.trim();
@@ -838,13 +976,20 @@
     startProgress(maxResults);
 
     try {
-      const res  = await fetch(`${API_BASE}/api/scrape`,{
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({steam_url:steamUrl, max_results:maxResults, date_filter:F.date, language}),
-      });
-      const data = await res.json();
+      let data;
+      if (IS_STATIC_HOST) {
+        const apiKey = document.getElementById("pageApiKey").value.trim();
+        if (!apiKey) throw new Error("Enter a YouTube Data API key for this browser session.");
+        data = await searchYouTubeFromBrowser(steamUrl,maxResults,F.date,language,apiKey);
+      } else {
+        const res = await fetch(`${API_BASE}/api/scrape`,{
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({steam_url:steamUrl, max_results:maxResults, date_filter:F.date, language}),
+        });
+        data = await res.json();
+        if (!res.ok) throw new Error(data.error||"Server error.");
+      }
       finishProgress();
-      if (!res.ok) { setStatus(data.error||"Server error.","error"); btn.disabled=false; return; }
 
       hideStatus();
       allVideos = data.videos;
@@ -879,7 +1024,7 @@
       applyFilters();
     } catch(err) {
       finishProgress();
-      setStatus("Cannot reach the backend. Make sure app.py is running on port 5000.","error");
+      setStatus(err.message || (IS_STATIC_HOST ? "YouTube API request failed." : "Cannot reach the backend. Make sure app.py is running on port 5000."),"error");
     }
     btn.disabled = false;
   }
@@ -903,6 +1048,10 @@
   }
 
   document.getElementById("steamUrl").addEventListener("keydown",e=>{if(e.key==="Enter")runScrape();});
+  if (IS_STATIC_HOST) {
+    document.getElementById("apiKeyPanel").classList.add("visible");
+    document.getElementById("pageApiKey").value = sessionStorage.getItem("steamtube_youtube_api_key") || "";
+  }
 </script>
 </body>
 </html>

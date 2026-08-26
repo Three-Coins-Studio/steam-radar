@@ -34,6 +34,22 @@ Steam Radar helps game-marketing teams discover YouTube creators covering a Stea
 
 5. Open `http://127.0.0.1:5000`.
 
+## GitHub Pages
+
+The public team build is published at:
+
+`https://three-coins-studio.github.io/steam-radar/`
+
+GitHub Pages cannot run Flask, so the deployed build performs YouTube API requests directly from the browser. Each team member enters a YouTube Data API key when opening the site. The key is stored only in that browser tab's session storage and is not committed to this repository.
+
+For safer use, restrict the key in Google Cloud Console:
+
+- Application restriction: **Websites**
+- Allowed referrer: `https://three-coins-studio.github.io/steam-radar/*`
+- API restriction: **YouTube Data API v3**
+
+The local Flask workflow continues to read `SEARCHAPI_KEY` from `.env`.
+
 ## Data and outreach
 
 Contact emails are detected only when creators publish them in public channel metadata. Review exported contacts and follow applicable privacy, anti-spam, and platform requirements before outreach.
