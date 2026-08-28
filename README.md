@@ -1,17 +1,28 @@
 # Steam Radar
 
-Steam Radar helps game-marketing teams discover YouTube creators covering a Steam game. Paste a Steam store URL to search relevant videos, compare public performance signals, filter results, select creators with publicly listed contact emails, and export a deduplicated outreach CSV.
+Steam Radar helps game-marketing teams discover YouTube and Twitch creators covering a Steam game. Paste a Steam store URL to search videos, VODs, and live streams; compare public performance signals; select creators with publicly listed contact emails; and export outreach data.
 
 ## Features
 
-- Search up to 500 YouTube videos from a Steam game URL
+- Search up to 500 results per platform from a Steam game URL
+- Discover YouTube videos, Twitch VODs, and Twitch live streams
 - Filter by upload period, language, video length, engagement, views, comments, country, and title keywords
 - Review video and channel statistics
 - Select creator emails directly from result cards
 - Deduplicate selected email addresses
 - Export all visible results or only selected creator emails to CSV
 
-## Setup
+## Use the team build
+
+Open [Steam Radar](https://three-coins-studio.github.io/steam-radar/), paste a Steam store URL, choose YouTube, Twitch, or both, and select **Search**.
+
+The hosted team build is already configured. It does not require an account, API key, Twitch login, Supabase project, or local installation.
+
+## Architecture
+
+GitHub Pages hosts the interface and calls the studio's deployed Supabase Edge Function. YouTube and Twitch credentials remain in server-side Function Secrets and never reach the browser.
+
+## Local development for maintainers
 
 1. Install Python 3.10 or newer.
 2. Install dependencies:
@@ -36,23 +47,11 @@ Steam Radar helps game-marketing teams discover YouTube creators covering a Stea
 
 5. Open `http://127.0.0.1:5000`.
 
-## GitHub Pages
+The Flask fallback supports YouTube only. Twitch and combined searches use the already-deployed Supabase backend configured in `config.js`.
 
-The public team build is published at:
+The local Flask workflow continues to read `SEARCHAPI_KEY` from `.env` as a YouTube-only fallback. See [YouTube Data API Key Setup](API_KEY_SETUP.md) for local key creation and quota guidance.
 
-`https://three-coins-studio.github.io/steam-radar/`
-
-GitHub Pages cannot run Flask, so the deployed build performs YouTube API requests directly from the browser. Each user enters their own YouTube Data API key. The key is kept only in that browser tab's session storage and is not committed to this repository.
-
-For safer use, restrict the key in Google Cloud Console:
-
-- Application restriction: **Websites**
-- Allowed referrer: `https://three-coins-studio.github.io/steam-radar/*`
-- API restriction: **YouTube Data API v3**
-
-The local Flask workflow continues to read `SEARCHAPI_KEY` from `.env`.
-
-See [YouTube Data API Key Setup for Steam Radar](API_KEY_SETUP.md) for project creation, browser and local key restrictions, testing, quota, troubleshooting, and rotation.
+Infrastructure deployment and credential rotation are maintainer operations. They are documented separately in the [Supabase maintainer guide](SUPABASE_SETUP.md) and are not required to use Steam Radar.
 
 ## Data and outreach
 
