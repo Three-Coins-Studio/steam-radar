@@ -3,11 +3,20 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 type JsonRecord = Record<string, unknown>;
 
 type SearchRequest = {
+  game_name?: string;
   steam_url?: string;
   platforms?: string[];
   max_results?: number;
   date_filter?: string;
   language?: string;
+};
+
+type SteamGame = {
+  appid: number;
+  name: string;
+  store_url: string;
+  thumbnail: string;
+  steamspy: JsonRecord;
 };
 
 type SearchResult = {
@@ -71,42 +80,65 @@ function json(request: Request, body: unknown, status = 200): Response {
   });
 }
 
-function extractSteamReference(steamUrl: string): { appId: string; fallbackName: string } {
-  let parsed: URL;
-  try {
-    parsed = new URL(steamUrl);
-  } catch {
-    throw new Error("Use a valid Steam store URL.");
-  }
-  if (!/(^|\.)steampowered\.com$/i.test(parsed.hostname)) {
-    throw new Error("Use a valid store.steampowered.com URL.");
-  }
-  const match = parsed.pathname.match(/\/app\/(\d+)(?:\/([^/]+))?/i);
-  if (match) {
-    return {
-      appId: match[1],
-      fallbackName: match[2] ? decodeURIComponent(match[2]).replace(/_/g, " ").trim() : "",
-    };
-  }
-  throw new Error("Could not extract the game name from that Steam URL.");
+function normalizeGameName(value: string): string {
+  return value.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-async function resolveSteamGameName(steamUrl: string): Promise<string> {
-  const reference = extractSteamReference(steamUrl);
+function gameMatchScore(query: string, candidate: string): number {
+  const normalizedQuery = normalizeGameName(query);
+  const normalizedCandidate = normalizeGameName(candidate);
+  if (normalizedCandidate === normalizedQuery) return 10_000;
+  const queryTokens = new Set(normalizedQuery.split(" ").filter(Boolean));
+  const candidateTokens = normalizedCandidate.split(" ").filter(Boolean);
+  const shared = candidateTokens.filter((token) => queryTokens.has(token)).length;
+  const missing = [...queryTokens].filter((token) => !candidateTokens.includes(token)).length;
+  const extra = candidateTokens.filter((token) => !queryTokens.has(token)).length;
+  const prefix = normalizedCandidate.startsWith(normalizedQuery) ? 200 : 0;
+  const addonPenalty = /\b(dlc|soundtrack|demo|server|test|editor|artbook)\b/.test(normalizedCandidate) ? 150 : 0;
+  return shared * 100 - missing * 80 - extra * 12 + prefix - addonPenalty;
+}
+
+async function resolveSteamGame(gameQuery: string): Promise<SteamGame> {
+  const query = gameQuery.trim().replace(/\s+/g, " ");
+  if (query.length < 2) throw new Error("Enter at least two characters of the game name.");
+  if (query.length > 120) throw new Error("Game names must be 120 characters or fewer.");
+
+  const resolutionKey = await cacheKey({ cacheVersion: 2, kind: "steam-game", query: normalizeGameName(query) });
+  const cached = await readCache(resolutionKey);
+  if (cached?.steam_game) return cached.steam_game as SteamGame;
+
+  const searchUrl = new URL("https://store.steampowered.com/api/storesearch/");
+  searchUrl.searchParams.set("term", query);
+  searchUrl.searchParams.set("l", "english");
+  searchUrl.searchParams.set("cc", "US");
+  const searchResponse = await fetchJson(searchUrl, { signal: AbortSignal.timeout(8000) });
+  const candidates = ((searchResponse.items as JsonRecord[]) || [])
+    .filter((item) => item.type === "app" && Number(item.id) > 0)
+    .sort((left, right) => gameMatchScore(query, String(right.name || "")) - gameMatchScore(query, String(left.name || "")));
+  const match = candidates[0];
+  if (!match) throw new Error(`No Steam game matched “${query}”. Try its full store name.`);
+
+  const appid = Number(match.id);
+  let steamspy: JsonRecord = {};
   try {
-    const url = new URL("https://store.steampowered.com/api/appdetails");
-    url.searchParams.set("appids", reference.appId);
-    url.searchParams.set("l", "english");
-    const response = await fetchJson(url, { signal: AbortSignal.timeout(5000) });
-    const app = response[reference.appId] as JsonRecord | undefined;
-    const data = app?.data as JsonRecord | undefined;
-    const officialName = String(data?.name || "").trim();
-    if (officialName) return officialName;
+    const steamSpyUrl = new URL("https://steamspy.com/api.php");
+    steamSpyUrl.searchParams.set("request", "appdetails");
+    steamSpyUrl.searchParams.set("appid", String(appid));
+    steamspy = await fetchJson(steamSpyUrl, { signal: AbortSignal.timeout(8000) });
   } catch {
-    // Steam occasionally blocks or delays app-details requests; the URL slug is a safe fallback.
+    // SteamSpy can lag behind newly released games; the Steam match remains usable.
   }
-  if (reference.fallbackName) return reference.fallbackName;
-  throw new Error("Steam did not return a game name. Use a Steam URL that includes the game slug.");
+
+  const game: SteamGame = {
+    appid,
+    // SteamSpy can retain historical names after a game is renamed; Steam's current store title wins.
+    name: String(match.name || steamspy.name || query).trim(),
+    store_url: `https://store.steampowered.com/app/${appid}/`,
+    thumbnail: String(match.tiny_image || ""),
+    steamspy,
+  };
+  await writeCache(resolutionKey, { steam_game: game }, 86400);
+  return game;
 }
 
 function extractEmail(text: string): string | null {
@@ -498,16 +530,17 @@ Deno.serve(async (request) => {
 
   try {
     const body = await request.json() as SearchRequest;
-    const steamUrl = String(body.steam_url || "").trim();
-    if (!steamUrl) return json(request, { error: "No Steam URL provided." }, 400);
-    const gameName = await resolveSteamGameName(steamUrl);
+    const gameQuery = String(body.game_name || "").trim();
+    if (!gameQuery) return json(request, { error: "Enter a Steam game name." }, 400);
+    const steamGame = await resolveSteamGame(gameQuery);
+    const gameName = steamGame.name;
     const requestedPlatforms = Array.isArray(body.platforms) ? body.platforms : ["youtube", "twitch"];
     const platforms = [...new Set(requestedPlatforms.map(String).filter((item) => VALID_PLATFORMS.has(item)))];
     if (!platforms.length) return json(request, { error: "Choose YouTube, Twitch, or both." }, 400);
     const maxResults = Math.max(1, Math.min(Number(body.max_results) || 100, 500));
     const dateFilter = VALID_DATES.has(String(body.date_filter)) ? String(body.date_filter) : "all";
     const language = String(body.language || "en").toLowerCase();
-    const normalizedRequest = { cacheVersion: 3, gameName, platforms: [...platforms].sort(), maxResults, dateFilter, language };
+    const normalizedRequest = { cacheVersion: 4, appid: steamGame.appid, gameName, platforms: [...platforms].sort(), maxResults, dateFilter, language };
     const key = await cacheKey(normalizedRequest);
     const cached = await readCache(key);
     if (cached) return json(request, { ...cached, cached: true });
@@ -536,6 +569,7 @@ Deno.serve(async (request) => {
 
     const response: JsonRecord = {
       game_name: gameName,
+      steam_game: steamGame,
       total: results.length,
       platforms,
       date_filter: dateFilter,

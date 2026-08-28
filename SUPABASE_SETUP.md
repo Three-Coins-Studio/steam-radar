@@ -71,9 +71,9 @@ Run the static site locally:
 python -m http.server 5000
 ```
 
-Open `http://localhost:5000`, paste a Steam store URL, select **YouTube + Twitch**, and search.
+Open `http://localhost:5000`, enter a Steam game name, select **YouTube + Twitch**, and search.
 
-If a provider fails while the other succeeds, Steam Radar displays the available results and a provider warning. Supabase caches Twitch searches for two minutes and YouTube-only searches for thirty minutes.
+The function first resolves the game through Steam Store search and caches its SteamSpy metadata for 24 hours. If a content provider fails while the other succeeds, Steam Radar displays the available results and a provider warning. Supabase caches Twitch searches for two minutes and YouTube-only searches for thirty minutes.
 
 ## Secret rotation
 

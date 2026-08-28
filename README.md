@@ -1,10 +1,11 @@
 # Steam Radar
 
-Steam Radar helps game-marketing teams discover YouTube and Twitch creators covering a Steam game. Paste a Steam store URL to search videos, VODs, and live streams; compare public performance signals; select creators with publicly listed contact emails; and export outreach data.
+Steam Radar helps game-marketing teams discover YouTube and Twitch creators covering a Steam game. Enter a game name to resolve its canonical Steam title, then search videos, VODs, and live streams; compare public performance signals; select creators with publicly listed contact emails; and export outreach data.
 
 ## Features
 
-- Search up to 500 results per platform from a Steam game URL
+- Find a game by name through Steam search and SteamSpy metadata
+- Search up to 500 results per platform for the resolved Steam game
 - Discover YouTube videos, Twitch VODs, and Twitch live streams
 - Filter by upload period, language, video length, engagement, views, comments, country, and title keywords
 - Review video and channel statistics
@@ -14,13 +15,13 @@ Steam Radar helps game-marketing teams discover YouTube and Twitch creators cove
 
 ## Use the team build
 
-Open [Steam Radar](https://three-coins-studio.github.io/steam-radar/), paste a Steam store URL, choose YouTube, Twitch, or both, and select **Search**.
+Open [Steam Radar](https://three-coins-studio.github.io/steam-radar/), enter a Steam game name, choose YouTube, Twitch, or both, and select **Search**.
 
 The hosted team build is already configured. It does not require an account, API key, Twitch login, Supabase project, or local installation.
 
 ## Architecture
 
-GitHub Pages hosts the interface and calls the studio's deployed Supabase Edge Function. YouTube and Twitch credentials remain in server-side Function Secrets and never reach the browser.
+GitHub Pages hosts the interface and calls the studio's deployed Supabase Edge Function. The function resolves the name with Steam Store search, enriches the selected app through SteamSpy, and then queries YouTube and Twitch. Provider credentials remain in server-side Function Secrets and never reach the browser.
 
 ## Local development for maintainers
 
