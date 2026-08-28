@@ -1,8 +1,10 @@
-# Supabase Backend Setup
+# Supabase Maintainer Guide
 
-Steam Radar uses a public Supabase Edge Function as its hosted API. Team members do not enter API keys or sign in. You configure the studio credentials once as Supabase Function Secrets.
+> **Maintainers only:** The studio backend is already deployed and configured. Team members should use the hosted site and do not need to perform any steps in this document.
 
-## 1. Create the Supabase project
+Use this guide only when recreating the infrastructure, deploying backend changes, or rotating studio credentials. Steam Radar uses a public Supabase Edge Function as its hosted API, with provider credentials stored as Function Secrets.
+
+## 1. Recreate or link the Supabase project
 
 Create a free project at [supabase.com](https://supabase.com), then copy its project reference from **Project Settings → General**.
 
@@ -14,7 +16,7 @@ supabase login
 supabase link --project-ref YOUR_PROJECT_REF
 ```
 
-## 2. Create the provider credentials
+## 2. Prepare provider credentials
 
 You need:
 
@@ -49,7 +51,7 @@ The deployed URL is:
 https://YOUR_PROJECT_REF.supabase.co/functions/v1/search
 ```
 
-## 5. Connect the frontend
+## 5. Configure a replacement backend URL
 
 Set the public function URL in `config.js`:
 

@@ -1,6 +1,6 @@
 # YouTube Data API Key Setup for Steam Radar
 
-> **Current deployment:** The hosted team build now keeps its shared YouTube key in Supabase Function Secrets. Follow [SUPABASE_SETUP.md](SUPABASE_SETUP.md) for the recommended setup. The browser-key sections below apply only to the retired direct-browser workflow; the local Flask key instructions remain useful.
+> **Current deployment:** The hosted team build is already configured and requires no user-provided API key. The [Supabase maintainer guide](SUPABASE_SETUP.md) is only for infrastructure maintenance. The browser-key sections below apply to the retired direct-browser workflow; the local Flask key instructions remain useful to developers.
 
 This guide explains how a team administrator can create, secure, test, and maintain the YouTube Data API keys used by Steam Radar.
 

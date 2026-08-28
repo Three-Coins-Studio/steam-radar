@@ -12,13 +12,17 @@ Steam Radar helps game-marketing teams discover YouTube and Twitch creators cove
 - Deduplicate selected email addresses
 - Export all visible results or only selected creator emails to CSV
 
-## Recommended hosted setup
+## Use the team build
 
-The team build uses GitHub Pages for the interface and a free Supabase Edge Function for provider requests. API credentials are stored as server-side Function Secrets, so team members do not enter keys or log in.
+Open [Steam Radar](https://three-coins-studio.github.io/steam-radar/), paste a Steam store URL, choose YouTube, Twitch, or both, and select **Search**.
 
-Follow [Supabase Backend Setup](SUPABASE_SETUP.md) to create the project, configure YouTube and Twitch credentials, deploy the cache migration and search function, and connect `config.js`.
+The hosted team build is already configured. It does not require an account, API key, Twitch login, Supabase project, or local installation.
 
-## Legacy local Flask setup
+## Architecture
+
+GitHub Pages hosts the interface and calls the studio's deployed Supabase Edge Function. YouTube and Twitch credentials remain in server-side Function Secrets and never reach the browser.
+
+## Local development for maintainers
 
 1. Install Python 3.10 or newer.
 2. Install dependencies:
@@ -43,17 +47,11 @@ Follow [Supabase Backend Setup](SUPABASE_SETUP.md) to create the project, config
 
 5. Open `http://127.0.0.1:5000`.
 
-The Flask fallback supports YouTube only. Twitch and combined searches use the Supabase backend.
-
-## GitHub Pages
-
-The public team build is published at:
-
-`https://three-coins-studio.github.io/steam-radar/`
-
-GitHub Pages calls the configured Supabase Edge Function. Provider credentials never reach the browser. The public function URL is configured in `config.js`; see [Supabase Backend Setup](SUPABASE_SETUP.md).
+The Flask fallback supports YouTube only. Twitch and combined searches use the already-deployed Supabase backend configured in `config.js`.
 
 The local Flask workflow continues to read `SEARCHAPI_KEY` from `.env` as a YouTube-only fallback. See [YouTube Data API Key Setup](API_KEY_SETUP.md) for local key creation and quota guidance.
+
+Infrastructure deployment and credential rotation are maintainer operations. They are documented separately in the [Supabase maintainer guide](SUPABASE_SETUP.md) and are not required to use Steam Radar.
 
 ## Data and outreach
 
