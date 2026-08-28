@@ -2,6 +2,9 @@ import os
 import re
 import time
 import math
+import json
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict
 
@@ -31,6 +34,66 @@ def extract_game_name_from_steam(steam_url: str) -> str:
     if match:
         return match.group(1)
     raise ValueError("Could not extract game name. Use a valid store.steampowered.com/app/... URL.")
+
+
+def _normalize_game_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+def _game_match_score(query: str, candidate: str) -> int:
+    normalized_query = _normalize_game_name(query)
+    normalized_candidate = _normalize_game_name(candidate)
+    if normalized_query == normalized_candidate:
+        return 10_000
+    query_tokens = set(normalized_query.split())
+    candidate_tokens = normalized_candidate.split()
+    shared = sum(token in query_tokens for token in candidate_tokens)
+    missing = sum(token not in candidate_tokens for token in query_tokens)
+    extra = sum(token not in query_tokens for token in candidate_tokens)
+    prefix = 200 if normalized_candidate.startswith(normalized_query) else 0
+    addon_penalty = 150 if re.search(r"\b(dlc|soundtrack|demo|server|test|editor|artbook)\b", normalized_candidate) else 0
+    return shared * 100 - missing * 80 - extra * 12 + prefix - addon_penalty
+
+
+def _get_json(url: str, timeout: int = 8) -> dict:
+    request_obj = Request(url, headers={"User-Agent": "SteamRadar/1.0"})
+    with urlopen(request_obj, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def resolve_steam_game(game_query: str) -> Dict:
+    query = re.sub(r"\s+", " ", game_query).strip()
+    if len(query) < 2:
+        raise ValueError("Enter at least two characters of the game name.")
+    if len(query) > 120:
+        raise ValueError("Game names must be 120 characters or fewer.")
+
+    search_url = "https://store.steampowered.com/api/storesearch/?" + urlencode({
+        "term": query, "l": "english", "cc": "US"
+    })
+    payload = _get_json(search_url)
+    candidates = [item for item in payload.get("items", []) if item.get("type") == "app" and item.get("id")]
+    if not candidates:
+        raise ValueError(f'No Steam game matched “{query}”. Try its full store name.')
+    match = max(candidates, key=lambda item: _game_match_score(query, str(item.get("name", ""))))
+    appid = int(match["id"])
+
+    steamspy = {}
+    try:
+        steamspy = _get_json("https://steamspy.com/api.php?" + urlencode({
+            "request": "appdetails", "appid": appid
+        }))
+    except Exception:
+        pass
+
+    return {
+        "appid": appid,
+        # Steam's current store title is authoritative; SteamSpy may retain historical names.
+        "name": str(match.get("name") or steamspy.get("name") or query).strip(),
+        "store_url": f"https://store.steampowered.com/app/{appid}/",
+        "thumbnail": match.get("tiny_image", ""),
+        "steamspy": steamspy,
+    }
 
 
 def extract_email(text: str) -> Optional[str]:
@@ -211,17 +274,23 @@ def index():
 @app.route("/api/scrape", methods=["POST"])
 def scrape():
     data = request.get_json(force=True)
+    game_query = (data.get("game_name") or "").strip()
     steam_url = (data.get("steam_url") or "").strip()
 
-    if not steam_url:
-        return jsonify({"error": "No Steam URL provided."}), 400
-    if "steampowered.com" not in steam_url:
-        return jsonify({"error": "Please provide a valid Steam store URL."}), 400
-
     try:
-        game_name = extract_game_name_from_steam(steam_url)
+        if game_query:
+            steam_game = resolve_steam_game(game_query)
+            game_name = steam_game["name"]
+        elif steam_url:
+            # Backward compatibility for older clients during rollout.
+            game_name = extract_game_name_from_steam(steam_url)
+            steam_game = {"appid": None, "name": game_name, "store_url": steam_url, "thumbnail": "", "steamspy": {}}
+        else:
+            return jsonify({"error": "Enter a Steam game name."}), 400
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Steam search error: {str(e)}"}), 502
 
     try:
         max_results = max(1, min(int(data.get("max_results", 100)), 500))
@@ -241,6 +310,7 @@ def scrape():
 
     return jsonify({
         "game_name":   game_name,
+        "steam_game":  steam_game,
         "total":       len(videos),
         "date_filter": date_filter,
         "videos":      videos,
