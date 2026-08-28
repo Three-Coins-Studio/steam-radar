@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SteamTube Scraper</title>
+  <title>Steam Radar</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
   <style>
@@ -119,6 +119,7 @@
 
     /* Shorts badge */
     .short-badge { position: absolute; top: 8px; left: 8px; z-index: 9; background: rgba(255,71,87,.85); color: #fff; font-size: .63rem; font-weight: 600; letter-spacing: .06em; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; }
+    .card .short-badge { top: 39px; }
 
     /* Delete btn */
     .delete-btn { position: absolute; top: 8px; right: 8px; z-index: 10; width: 27px; height: 27px; border-radius: 50%; background: rgba(0,0,0,.72); border: 1px solid rgba(255,71,87,.45); color: var(--danger); font-size: 13px; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity .15s, transform .15s, background .15s; }
@@ -168,6 +169,13 @@
     .chip:hover { opacity: .8; }
     .chip-video   { background: rgba(0,229,255,.1); border: 1px solid rgba(0,229,255,.22); color: var(--accent); }
     .chip-channel { background: rgba(27,154,236,.1); border: 1px solid rgba(27,154,236,.22); color: var(--steam); }
+    .platform-badge { position: absolute; top: 9px; left: 9px; z-index: 3; padding: 4px 8px; border-radius: 6px; font-size: .65rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+    .platform-youtube { background: #ff0033; }
+    .platform-twitch { background: #9146ff; }
+    .live-badge { position: absolute; bottom: 8px; left: 8px; z-index: 2; background: #e91916; color: #fff; border-radius: 4px; padding: 3px 7px; font-size: .66rem; font-weight: 700; text-transform: uppercase; }
+    .provider-warning { display: none; margin: 0 0 16px; padding: 10px 12px; border: 1px solid rgba(255,165,2,.35); border-radius: var(--radius); color: #ffc266; background: rgba(255,165,2,.07); font-size: .78rem; }
+    .provider-warning.visible { display: block; }
+    .youtube-only.hidden { display: none; }
 
     /* Export / bottom bar */
     .export-bar { display: none; justify-content: space-between; align-items: center; gap: 10px; margin-top: 26px; flex-wrap: wrap; }
@@ -211,8 +219,8 @@
 
   <header>
     <div class="logo-icon">🎮</div>
-    <div class="logo-text">Steam<span>Tube</span> Scraper</div>
-    <div class="badge">YouTube Intel</div>
+    <div class="logo-text">Steam <span>Radar</span></div>
+    <div class="badge">Creator Intel</div>
   </header>
 
   <!-- Search panel -->
@@ -222,12 +230,17 @@
       <input class="url-input" id="steamUrl" type="url"
         placeholder="https://store.steampowered.com/app/730/Counter_Strike_2/"
         autocomplete="off" />
+      <select class="opt" id="platformSelect" onchange="updatePlatformUI()">
+        <option value="both" selected>YouTube + Twitch</option>
+        <option value="youtube">YouTube</option>
+        <option value="twitch">Twitch</option>
+      </select>
       <select class="opt" id="maxResults">
-        <option value="50">50 videos</option>
-        <option value="100" selected>100 videos</option>
-        <option value="200">200 videos</option>
-        <option value="300">300 videos</option>
-        <option value="500">500 videos</option>
+        <option value="50">50 per source</option>
+        <option value="100" selected>100 per source</option>
+        <option value="200">200 per source</option>
+        <option value="300">300 per source</option>
+        <option value="500">500 per source</option>
       </select>
       <select class="opt" id="langSelect">
         <option value="en">English</option>
@@ -246,14 +259,6 @@
       <button class="btn btn-primary" id="searchBtn" onclick="runScrape()">Search</button>
     </div>
     <p class="hint">Example: <code>https://store.steampowered.com/app/1091500/Cyberpunk_2077/</code></p>
-    <div class="api-key-panel" id="apiKeyPanel">
-      <div class="filter-label" style="margin-bottom:7px">YouTube Data API key for this browser session</div>
-      <div class="api-key-row">
-        <input class="url-input" id="pageApiKey" type="password" placeholder="Paste a restricted YouTube API key" autocomplete="off" oninput="saveSessionApiKey()" />
-        <button class="btn-outline" type="button" onclick="toggleApiKeyVisibility()">Show / hide</button>
-      </div>
-      <p class="api-key-note">Your key stays in this browser tab and is not sent to Steam Radar or committed to GitHub. <a href="https://github.com/Three-Coins-Studio/steam-radar/blob/main/API_KEY_SETUP.md" target="_blank" rel="noopener noreferrer">Learn how to create and restrict a key</a>.</p>
-    </div>
   </div>
 
   <!-- Filters panel (hidden until results load) -->
@@ -286,7 +291,7 @@
       </div>
 
       <!-- Shorts -->
-      <div class="filter-group">
+      <div class="filter-group youtube-only">
         <div class="filter-label">Video length</div>
         <div class="pills" id="shortsGroup">
           <button class="pill active" data-val="all"      onclick="setPill(this,'shorts')">All</button>
@@ -331,7 +336,7 @@
       </div>
 
       <!-- Min likes -->
-      <div class="filter-group">
+      <div class="filter-group youtube-only">
         <div class="filter-label">Min likes</div>
         <div class="range-row">
           <input type="range" id="minLikesSlider" min="0" max="100000" step="100" value="0"
@@ -341,7 +346,7 @@
       </div>
 
       <!-- Min like ratio -->
-      <div class="filter-group">
+      <div class="filter-group youtube-only">
         <div class="filter-label">Min like ratio (%)</div>
         <div class="range-row">
           <input type="range" id="minRatioSlider" min="0" max="10" step="0.1" value="0"
@@ -351,7 +356,7 @@
       </div>
 
       <!-- Min comments -->
-      <div class="filter-group">
+      <div class="filter-group youtube-only">
         <div class="filter-label">Min comments</div>
         <div class="range-row">
           <input type="range" id="minCommentsSlider" min="0" max="10000" step="50" value="0"
@@ -361,7 +366,7 @@
       </div>
 
       <!-- Channel country -->
-      <div class="filter-group">
+      <div class="filter-group youtube-only">
         <div class="filter-label">Channel country</div>
         <div class="pills" id="countryGroup">
           <button class="pill active" data-val="all" onclick="setPill(this,'country')">Any</button>
@@ -426,12 +431,13 @@
       <div class="count-pill" id="countPill"></div>
     </div>
   </div>
+  <div class="provider-warning" id="providerWarning"></div>
 
   <!-- Summary stats -->
   <div class="stats-summary" id="statsSummary">
     <div class="summary-card"><div class="summary-label">Total views</div><div class="summary-value" id="sumViews">—</div></div>
     <div class="summary-card"><div class="summary-label">Avg views</div><div class="summary-value" id="sumAvgViews">—</div></div>
-    <div class="summary-card"><div class="summary-label">Avg like ratio</div><div class="summary-value" id="sumRatio">—</div></div>
+    <div class="summary-card"><div class="summary-label">Avg YouTube like ratio</div><div class="summary-value" id="sumRatio">—</div></div>
     <div class="summary-card"><div class="summary-label">With email</div><div class="summary-value" id="sumEmail">—</div></div>
     <div class="summary-card"><div class="summary-label">Avg duration</div><div class="summary-value" id="sumDur">—</div></div>
   </div>
@@ -443,7 +449,7 @@
   <div class="grid" id="grid"></div>
   <div class="empty" id="emptyState">
     <div class="empty-icon">📭</div>
-    <p>No videos match the current filters. Try adjusting them.</p>
+    <p>No results match the current filters. Try adjusting them.</p>
   </div>
 
   <!-- Export / restore bar -->
@@ -463,9 +469,11 @@
   </div>
 
 </div>
+<script src="config.js"></script>
 <script>
   const API_BASE = window.location.origin;
   const IS_STATIC_HOST = window.location.hostname.endsWith("github.io") || new URLSearchParams(window.location.search).has("static");
+  const HOSTED_API_URL = String(window.STEAM_RADAR_CONFIG?.apiUrl || "").replace(/\/$/, "");
   let allVideos = [], deletedIds = new Set(), selectedEmails = new Set(), gameName = "", progressTimer = null;
 
   const F = {
@@ -500,6 +508,31 @@
     return `${m}m ${s}s`;
   }
   function avatarLetter(n){ return (n||"?")[0].toUpperCase(); }
+  function esc(value) {
+    return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[ch]);
+  }
+  function safeUrl(value) {
+    try {
+      const url = new URL(String(value || ""));
+      return ["http:","https:"].includes(url.protocol) ? esc(url.href) : "#";
+    } catch { return "#"; }
+  }
+  function requestedPlatforms() {
+    const value = document.getElementById("platformSelect").value;
+    return value === "both" ? ["youtube","twitch"] : [value];
+  }
+  function updatePlatformUI() {
+    const twitchOnly = document.getElementById("platformSelect").value === "twitch";
+    document.querySelectorAll(".youtube-only").forEach(el => el.classList.toggle("hidden", twitchOnly));
+    if (twitchOnly) {
+      Object.assign(F,{shorts:"all",country:"all",minLikes:0,minRatio:0,minComments:0});
+      resetPillGroup("shortsGroup","all");
+      resetPillGroup("countryGroup","all");
+      document.getElementById("minLikesSlider").value=0;
+      document.getElementById("minRatioSlider").value=0;
+      document.getElementById("minCommentsSlider").value=0;
+    }
+  }
 
   /* ─── pill / filter controls ──────────────────────────────────────────── */
   function setPill(el, group) {
@@ -585,13 +618,17 @@
   /* ─── filter logic ────────────────────────────────────────────────────── */
   function passesFilters(v) {
     if (deletedIds.has(v.video_id)) return false;
+    if (F.date!=="all") {
+      const days = {week:7,month:30,year:365}[F.date];
+      if (!v.published_at || new Date(v.published_at).getTime() < Date.now()-days*86400000) return false;
+    }
     if (F.email==="has"     && !v.email)  return false;
     if (F.email==="missing" && v.email)   return false;
     if (F.country==="has"   && !v.country) return false;
     if (F.shorts==="no_shorts"   && v.is_short)  return false;
     if (F.shorts==="only_shorts" && !v.is_short) return false;
     if (F.shorts==="long" && v.duration_seconds < 600) return false;
-    const views = v.view_count||0;
+    const views = v.is_live ? (v.viewer_count||0) : (v.view_count||0);
     if (views < F.minViews) return false;
     if (F.maxViews < 1e8 && views > F.maxViews) return false;
     if ((v.like_count||0) < F.minLikes) return false;
@@ -609,8 +646,9 @@
 
   function sortList(list) {
     const s = F.sort;
-    if (s==="views_desc")    list.sort((a,b)=>(b.view_count||0)-(a.view_count||0));
-    if (s==="views_asc")     list.sort((a,b)=>(a.view_count||0)-(b.view_count||0));
+    const audience = v => v.is_live ? (v.viewer_count||0) : (v.view_count||0);
+    if (s==="views_desc")    list.sort((a,b)=>audience(b)-audience(a));
+    if (s==="views_asc")     list.sort((a,b)=>audience(a)-audience(b));
     if (s==="date_desc")     list.sort((a,b)=>new Date(b.published_at)-new Date(a.published_at));
     if (s==="date_asc")      list.sort((a,b)=>new Date(a.published_at)-new Date(b.published_at));
     if (s==="likes_desc")    list.sort((a,b)=>(b.like_count||0)-(a.like_count||0));
@@ -630,7 +668,7 @@
     if (list.length===0) { grid.innerHTML=""; empty.classList.add("visible"); }
     else { empty.classList.remove("visible"); grid.innerHTML=list.map((v,i)=>renderCard(v,i)).join(""); }
 
-    document.getElementById("countPill").textContent = `${list.length} / ${allVideos.length} videos`;
+    document.getElementById("countPill").textContent = `${list.length} / ${allVideos.length} results`;
     updateSummary(list);
     renderAfTags();
 
@@ -644,15 +682,16 @@
   /* ─── summary stats ───────────────────────────────────────────────────── */
   function updateSummary(list) {
     if (!list.length) return;
-    const totalViews = list.reduce((s,v)=>s+(v.view_count||0),0);
+    const totalViews = list.reduce((s,v)=>s+(v.is_live?(v.viewer_count||0):(v.view_count||0)),0);
     const avgViews   = totalViews/list.length;
-    const avgRatio   = list.reduce((s,v)=>s+(v.like_ratio||0),0)/list.length;
+    const youtubeList = list.filter(v=>v.platform!=="twitch");
+    const avgRatio = youtubeList.length ? youtubeList.reduce((s,v)=>s+(v.like_ratio||0),0)/youtubeList.length : 0;
     const withEmail  = list.filter(v=>v.email).length;
     const durList    = list.filter(v=>v.duration_seconds>0);
     const avgDur     = durList.length ? durList.reduce((s,v)=>s+v.duration_seconds,0)/durList.length : 0;
     document.getElementById("sumViews").textContent    = fmtN(totalViews);
     document.getElementById("sumAvgViews").textContent = fmtN(Math.round(avgViews));
-    document.getElementById("sumRatio").textContent    = avgRatio.toFixed(2)+"%";
+    document.getElementById("sumRatio").textContent    = youtubeList.length ? avgRatio.toFixed(2)+"%" : "—";
     document.getElementById("sumEmail").textContent    = withEmail+" / "+list.length;
     document.getElementById("sumDur").textContent      = avgDur>0 ? fmtDurAvg(avgDur) : "—";
   }
@@ -694,49 +733,60 @@
   /* ─── render card ─────────────────────────────────────────────────────── */
   function renderCard(v, idx) {
     const noThumb = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180'%3E%3Crect fill='%231a1d28' width='320' height='180'/%3E%3Ctext x='160' y='95' text-anchor='middle' fill='%237b80a0' font-size='13'%3ENo thumbnail%3C/text%3E%3C/svg%3E`;
+    const platform = v.platform === "twitch" ? "twitch" : "youtube";
+    const contentId = esc(v.video_id);
     const emailSelected = v.email && selectedEmails.has(v.email.toLowerCase());
     const emailBlock = v.email
-      ? `<button class="select-email-btn" onclick="toggleCreatorEmail(event,'${v.video_id}')"><input type="checkbox" ${emailSelected?'checked':''} tabindex="-1" />${v.email}</button>`
+      ? `<button class="select-email-btn" onclick="toggleCreatorEmail(event,'${contentId}')"><input type="checkbox" ${emailSelected?'checked':''} tabindex="-1" />${esc(v.email)}</button>`
       : `<div class="no-email">No email found</div>`;
     const ratioW = Math.min(100, (v.like_ratio||0) * 20).toFixed(1);
     const dur    = v.duration_seconds ? fmtDur(v.duration_seconds) : "";
     const shortBadge = v.is_short ? `<div class="short-badge">Short</div>` : "";
+    const liveBadge = v.is_live ? `<div class="live-badge">Live</div>` : "";
     const durBadge   = dur ? `<div class="dur-badge">${dur}</div>` : "";
     const subs  = v.subscriber_count && v.subscriber_count!=="N/A" ? fmtN(v.subscriber_count)+" subs" : "";
+    const primaryStat = v.is_live ? `${fmtN(v.viewer_count)} watching` : fmtN(v.view_count);
+    const youtubeStats = platform === "youtube" ? `
+      <div class="stat"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>${fmtN(v.like_count)}</div>
+      <div class="stat"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z"/></svg>${fmtN(v.comment_count)}</div>` : "";
+    const engagement = platform === "youtube" ? `
+      <div class="engage-row">
+        <div class="engage-label"><span>Like ratio</span><span class="${(v.like_ratio||0)>=2?'hi':''}">${(v.like_ratio||0).toFixed(2)}%</span></div>
+        <div class="engage-bar-bg"><div class="engage-bar-fill" style="width:${ratioW}%"></div></div>
+      </div>` : "";
 
     return `
-      <div class="card" id="card-${v.video_id}" style="animation-delay:${Math.min(idx,20)*22}ms">
+      <div class="card" id="card-${contentId}" style="animation-delay:${Math.min(idx,20)*22}ms">
+        <div class="platform-badge platform-${platform}">${platform}</div>
         ${shortBadge}
-        <button class="delete-btn" onclick="deleteCard('${v.video_id}')" title="Remove this video">✕</button>
-        <a href="${v.video_url}" target="_blank" rel="noopener">
+        <button class="delete-btn" onclick="deleteCard('${contentId}')" title="Remove this result">✕</button>
+        <a href="${safeUrl(v.video_url)}" target="_blank" rel="noopener">
           <div class="thumb-wrap">
-            <img src="${v.thumbnail}" alt="" loading="lazy" onerror="this.src='${noThumb}'" />
+            <img src="${safeUrl(v.thumbnail)}" alt="" loading="lazy" onerror="this.src='${noThumb}'" />
             <div class="play-overlay"><div class="play-circle"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div></div>
+            ${liveBadge}
             ${durBadge}
           </div>
         </a>
         <div class="card-body">
-          <div class="video-title" title="${v.title.replace(/"/g,'&quot;').replace(/</g,'&lt;')}">${v.title}</div>
+          <div class="video-title" title="${esc(v.title)}">${esc(v.title)}</div>
           <div class="channel-row">
-            <div class="channel-avatar">${avatarLetter(v.channel_name)}</div>
-            <div class="channel-name">${v.channel_name}</div>
+            <div class="channel-avatar">${esc(avatarLetter(v.channel_name))}</div>
+            <div class="channel-name">${esc(v.channel_name)}</div>
             ${subs ? `<div class="subs-badge">${subs}</div>` : ""}
           </div>
           <div class="stats-row">
-            <div class="stat"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>${fmtN(v.view_count)}</div>
-            <div class="stat"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>${fmtN(v.like_count)}</div>
-            <div class="stat"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z"/></svg>${fmtN(v.comment_count)}</div>
-            ${v.country?`<div class="stat">📍${v.country}</div>`:""}
+            <div class="stat"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>${primaryStat}</div>
+            ${youtubeStats}
+            ${v.country?`<div class="stat">📍${esc(v.country)}</div>`:""}
+            ${v.language?`<div class="stat">${esc(String(v.language).toUpperCase())}</div>`:""}
             <div class="stat">${fmtDate(v.published_at)}</div>
           </div>
-          <div class="engage-row">
-            <div class="engage-label"><span>Like ratio</span><span class="${(v.like_ratio||0)>=2?'hi':''}">${(v.like_ratio||0).toFixed(2)}%</span></div>
-            <div class="engage-bar-bg"><div class="engage-bar-fill" style="width:${ratioW}%"></div></div>
-          </div>
+          ${engagement}
           ${emailBlock}
           <div class="card-actions">
-            <a class="chip chip-video"   href="${v.video_url}"   target="_blank" rel="noopener">▶ Watch</a>
-            <a class="chip chip-channel" href="${v.channel_url}" target="_blank" rel="noopener">Channel</a>
+            <a class="chip chip-video"   href="${safeUrl(v.video_url)}" target="_blank" rel="noopener">▶ ${v.is_live?'Open live':'Watch'}</a>
+            <a class="chip chip-channel" href="${safeUrl(v.channel_url)}" target="_blank" rel="noopener">Channel</a>
           </div>
         </div>
       </div>`;
@@ -749,7 +799,7 @@
     if (el) { el.style.transition="opacity .18s,transform .18s"; el.style.opacity="0"; el.style.transform="scale(.9)"; setTimeout(()=>el.remove(),180); }
     setTimeout(()=>{
       const remaining = document.getElementById("grid").children.length;
-      document.getElementById("countPill").textContent = `${remaining} / ${allVideos.length} videos`;
+      document.getElementById("countPill").textContent = `${remaining} / ${allVideos.length} results`;
       document.getElementById("restoreBtn").style.display = deletedIds.size>0?"":"none";
       document.getElementById("restoreCount").textContent = deletedIds.size;
       renderAfTags();
@@ -777,6 +827,7 @@
       video_title: v.title || "",
       video_url: v.video_url || "",
       channel_url: v.channel_url || "",
+      platform: v.platform || "youtube",
     }));
   }
 
@@ -812,12 +863,13 @@
   function exportSelectedEmailsCSV() {
     const recipients = getSelectedRecipients();
     if (!recipients.length) return;
-    const headers = ["email","channel_name","subscriber_count","country","video_title","video_url","channel_url","game_name"];
+    const headers = ["email","channel_name","platform","subscriber_count","country","video_title","video_url","channel_url","game_name"];
     const rows = recipients.map(recipient => {
       const source = allVideos.find(v => v.email && v.email.toLowerCase() === recipient.email.toLowerCase()) || {};
       const record = {
         email: recipient.email,
         channel_name: recipient.channel_name,
+        platform: recipient.platform,
         subscriber_count: source.subscriber_count ?? "",
         country: source.country ?? "",
         video_title: recipient.video_title,
@@ -827,131 +879,20 @@
       };
       return headers.map(key => `"${String(record[key] ?? "").replace(/"/g,'""')}"`).join(",");
     });
-    dl([headers.join(","), ...rows].join("\n"), `steamtube_${gameName}_selected_emails.csv`, "text/csv");
+    dl([headers.join(","), ...rows].join("\n"), `steam_radar_${gameName}_selected_emails.csv`, "text/csv");
   }
 
-  /* ─── GitHub Pages mode ──────────────────────────────────────────────── */
-  function saveSessionApiKey() {
-    const key = document.getElementById("pageApiKey").value.trim();
-    if (key) sessionStorage.setItem("steamtube_youtube_api_key", key);
-    else sessionStorage.removeItem("steamtube_youtube_api_key");
-  }
-
-  function toggleApiKeyVisibility() {
-    const input = document.getElementById("pageApiKey");
-    input.type = input.type === "password" ? "text" : "password";
-  }
-
-  function extractStaticGameName(steamUrl) {
-    const match = steamUrl.match(/\/app\/\d+\/([^/?#]+)/i);
-    if (match) return decodeURIComponent(match[1]).replace(/_/g," ").trim();
-    const idMatch = steamUrl.match(/\/app\/(\d+)/i);
-    if (idMatch) return idMatch[1];
-    throw new Error("Could not extract the game name. Use a valid Steam store URL.");
-  }
-
-  function staticPublishedAfter(dateFilter) {
-    const days = {week:7, month:30, year:365}[dateFilter];
-    return days ? new Date(Date.now() - days*86400000).toISOString().replace(/\.\d{3}Z$/,"Z") : "";
-  }
-
-  function staticDurationSeconds(duration) {
-    const match = String(duration||"").match(/^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
-    if (!match) return 0;
-    return Number(match[1]||0)*86400 + Number(match[2]||0)*3600 + Number(match[3]||0)*60 + Number(match[4]||0);
-  }
-
-  function staticExtractEmail(text) {
-    return String(text||"").match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/)?.[0] || null;
-  }
-
-  function staticChunks(list, size=50) {
-    const result = [];
-    for (let i=0; i<list.length; i+=size) result.push(list.slice(i,i+size));
-    return result;
-  }
-
-  async function youtubeRequest(resource, params, apiKey) {
-    const url = new URL(`https://www.googleapis.com/youtube/v3/${resource}`);
-    Object.entries({...params,key:apiKey}).forEach(([key,value]) => {
-      if (value !== "" && value != null) url.searchParams.set(key,String(value));
+  /* ─── centralized backend ────────────────────────────────────────────── */
+  async function searchHosted(payload) {
+    if (!HOSTED_API_URL) throw new Error("The hosted search API has not been configured yet.");
+    const response = await fetch(HOSTED_API_URL, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload),
     });
-    const response = await fetch(url);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || `YouTube API request failed (${response.status}).`);
+    const data = await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error(data.error || `Search API failed (${response.status}).`);
     return data;
-  }
-
-  async function searchYouTubeFromBrowser(steamUrl, maxResults, dateFilter, language, apiKey) {
-    if (!steamUrl.includes("steampowered.com")) throw new Error("Please provide a valid Steam store URL.");
-    const staticGameName = extractStaticGameName(steamUrl);
-    const publishedAfter = staticPublishedAfter(dateFilter);
-    const videoItems = [];
-    let pageToken = "";
-
-    for (let page=0; page<Math.ceil(maxResults/50); page++) {
-      const response = await youtubeRequest("search", {
-        q:`${staticGameName} gameplay`, part:"id,snippet", type:"video",
-        maxResults:Math.min(50,maxResults-videoItems.length), safeSearch:"none",
-        relevanceLanguage:language!=="any"?language:"",
-        publishedAfter, pageToken,
-      }, apiKey);
-      videoItems.push(...(response.items||[]));
-      pageToken = response.nextPageToken || "";
-      if (!pageToken || videoItems.length >= maxResults) break;
-    }
-
-    const uniqueItems = [];
-    const seenVideos = new Set();
-    for (const item of videoItems) {
-      const id = item.id?.videoId;
-      if (id && !seenVideos.has(id)) { seenVideos.add(id); uniqueItems.push(item); }
-    }
-
-    const channelInfo = new Map();
-    const channelIds = [...new Set(uniqueItems.map(item=>item.snippet?.channelId).filter(Boolean))];
-    for (const ids of staticChunks(channelIds)) {
-      const response = await youtubeRequest("channels", {part:"snippet,brandingSettings,statistics",id:ids.join(","),maxResults:50}, apiKey);
-      for (const channel of response.items||[]) {
-        const snippet = channel.snippet||{}, branding = channel.brandingSettings?.channel||{}, stats = channel.statistics||{};
-        channelInfo.set(channel.id, {
-          email:staticExtractEmail(`${snippet.description||""} ${branding.keywords||""}`),
-          country:snippet.country||"", subscriber_count:stats.subscriberCount||"N/A",
-        });
-      }
-    }
-
-    const statsInfo = new Map();
-    const videoIds = uniqueItems.map(item=>item.id.videoId);
-    for (const ids of staticChunks(videoIds)) {
-      const response = await youtubeRequest("videos", {part:"statistics,contentDetails",id:ids.join(",")}, apiKey);
-      for (const video of response.items||[]) {
-        statsInfo.set(video.id, {...(video.statistics||{}),duration_seconds:staticDurationSeconds(video.contentDetails?.duration)});
-      }
-    }
-
-    const videos = uniqueItems.slice(0,maxResults).map(item => {
-      const videoId = item.id.videoId, snippet = item.snippet||{}, channelId = snippet.channelId;
-      const channel = channelInfo.get(channelId)||{}, stats = statsInfo.get(videoId)||{};
-      const views = Number(stats.viewCount||0), likes = Number(stats.likeCount||0), comments = Number(stats.commentCount||0);
-      const thumbs = snippet.thumbnails||{};
-      return {
-        video_id:videoId, title:snippet.title||"",
-        thumbnail:thumbs.maxres?.url||thumbs.high?.url||thumbs.medium?.url||thumbs.default?.url||"",
-        channel_name:snippet.channelTitle||"", channel_id:channelId,
-        channel_url:`https://www.youtube.com/channel/${channelId}`,
-        video_url:`https://www.youtube.com/watch?v=${videoId}`,
-        published_at:snippet.publishedAt||"", description:snippet.description||"",
-        email:channel.email||null, country:channel.country||"", view_count:views,
-        like_count:likes, comment_count:comments,
-        like_ratio:views?Math.round((likes/views*100)*100)/100:0,
-        duration_seconds:stats.duration_seconds||0,
-        subscriber_count:channel.subscriber_count||"N/A",
-        is_short:(stats.duration_seconds||0)>0 && stats.duration_seconds<=60,
-      };
-    });
-
-    return {game_name:staticGameName,total:videos.length,date_filter:dateFilter,videos};
   }
 
   /* ─── main search ─────────────────────────────────────────────────────── */
@@ -972,19 +913,20 @@
     allVideos=[]; deletedIds=new Set(); selectedEmails=new Set();
     document.getElementById("emailSelectionBar").style.display = "none";
 
-    setStatus(`Fetching up to ${maxResults} videos…`);
+    const platforms = requestedPlatforms();
+    setStatus(`Searching ${platforms.map(p=>p[0].toUpperCase()+p.slice(1)).join(" and ")}…`);
     startProgress(maxResults);
 
     try {
       let data;
-      if (IS_STATIC_HOST) {
-        const apiKey = document.getElementById("pageApiKey").value.trim();
-        if (!apiKey) throw new Error("Enter a YouTube Data API key for this browser session.");
-        data = await searchYouTubeFromBrowser(steamUrl,maxResults,F.date,language,apiKey);
+      const payload = {steam_url:steamUrl,platforms,max_results:maxResults,date_filter:F.date,language};
+      if (HOSTED_API_URL) {
+        data = await searchHosted(payload);
       } else {
+        if (platforms.includes("twitch")) throw new Error("Configure the Supabase search URL in config.js to enable Twitch.");
         const res = await fetch(`${API_BASE}/api/scrape`,{
           method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({steam_url:steamUrl, max_results:maxResults, date_filter:F.date, language}),
+          body: JSON.stringify(payload),
         });
         data = await res.json();
         if (!res.ok) throw new Error(data.error||"Server error.");
@@ -992,10 +934,19 @@
       finishProgress();
 
       hideStatus();
-      allVideos = data.videos;
+      allVideos = (data.videos||[]).map(v=>({platform:"youtube",content_type:"video",is_live:false,viewer_count:0,language:"",...v}));
       gameName  = data.game_name;
 
-      document.getElementById("gameLabel").innerHTML = `Results for <span>${gameName}</span>`;
+      document.getElementById("gameLabel").innerHTML = `Results for <span>${esc(gameName)}</span>`;
+      const providerErrors = Object.entries(data.provider_errors||{});
+      const warning = document.getElementById("providerWarning");
+      if (providerErrors.length) {
+        warning.textContent = providerErrors.map(([provider,message])=>`${provider}: ${message}`).join(" · ");
+        warning.classList.add("visible");
+      } else {
+        warning.textContent = "";
+        warning.classList.remove("visible");
+      }
       document.getElementById("resultsMeta").className = "results-meta visible";
       document.getElementById("exportBar").className   = "export-bar visible";
       document.getElementById("filtersPanel").style.display = "";
@@ -1003,7 +954,7 @@
       document.getElementById("emailSelectionBar").style.display = "";
 
       // Tune sliders to actual data
-      const views = allVideos.map(v=>v.view_count||0).filter(n=>n>0);
+      const views = allVideos.map(v=>v.is_live?(v.viewer_count||0):(v.view_count||0)).filter(n=>n>0);
       const likes = allVideos.map(v=>v.like_count||0).filter(n=>n>0);
       const comments = allVideos.map(v=>v.comment_count||0).filter(n=>n>0);
       if (views.length) {
@@ -1024,7 +975,7 @@
       applyFilters();
     } catch(err) {
       finishProgress();
-      setStatus(err.message || (IS_STATIC_HOST ? "YouTube API request failed." : "Cannot reach the backend. Make sure app.py is running on port 5000."),"error");
+      setStatus(err.message || "Search failed.","error");
     }
     btn.disabled = false;
   }
@@ -1039,19 +990,16 @@
     a.download=name; a.click(); URL.revokeObjectURL(a.href);
   }
   function exportCSV() {
-    const h=["title","channel_name","email","view_count","like_count","comment_count","like_ratio","duration_seconds","subscriber_count","published_at","country","video_url","channel_url"];
+    const h=["platform","content_type","is_live","title","channel_name","email","view_count","viewer_count","like_count","comment_count","like_ratio","duration_seconds","subscriber_count","published_at","language","country","video_url","channel_url"];
     const rows=getVisible().map(v=>h.map(k=>`"${(v[k]||"").toString().replace(/"/g,'""')}"`).join(","));
-    dl([h.join(","),...rows].join("\n"),`steamtube_${gameName}.csv`,"text/csv");
+    dl([h.join(","),...rows].join("\n"),`steam_radar_${gameName}.csv`,"text/csv");
   }
   function exportJSON() {
-    dl(JSON.stringify(getVisible(),null,2),`steamtube_${gameName}.json`,"application/json");
+    dl(JSON.stringify(getVisible(),null,2),`steam_radar_${gameName}.json`,"application/json");
   }
 
   document.getElementById("steamUrl").addEventListener("keydown",e=>{if(e.key==="Enter")runScrape();});
-  if (IS_STATIC_HOST) {
-    document.getElementById("apiKeyPanel").classList.add("visible");
-    document.getElementById("pageApiKey").value = sessionStorage.getItem("steamtube_youtube_api_key") || "";
-  }
+  updatePlatformUI();
 </script>
 </body>
 </html>

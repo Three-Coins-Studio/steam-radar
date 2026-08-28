@@ -8,6 +8,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 .sixth/
+supabase/.temp/
 
 flask.stdout.log
 flask.stderr.log

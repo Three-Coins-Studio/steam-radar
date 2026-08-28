@@ -1,0 +1,4 @@
+project_id = "steam-radar"
+
+[functions.search]
+verify_jwt = false
