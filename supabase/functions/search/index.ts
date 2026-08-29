@@ -497,6 +497,24 @@ function supabaseAdmin() {
   return url && key ? createClient(url, key, { auth: { persistSession: false } }) : null;
 }
 
+async function authorizedUser(request: Request): Promise<{ id: string; email: string } | null> {
+  const authorization = request.headers.get("authorization") || "";
+  const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1];
+  const admin = supabaseAdmin();
+  if (!token || !admin) return null;
+
+  const { data: { user }, error } = await admin.auth.getUser(token);
+  const email = user?.email?.trim().toLowerCase() || "";
+  if (error || !user || !email) return null;
+
+  const { data: approved } = await admin
+    .from("access_whitelist")
+    .select("email")
+    .eq("email", email)
+    .maybeSingle();
+  return approved ? { id: user.id, email } : null;
+}
+
 async function cacheKey(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -527,6 +545,9 @@ Deno.serve(async (request) => {
 
   const origin = request.headers.get("origin")?.replace(/\/$/, "") || "";
   if (origin && !allowedOrigins().includes(origin)) return json(request, { error: "Origin not allowed." }, 403);
+
+  const user = await authorizedUser(request);
+  if (!user) return json(request, { error: "Sign in with an approved email to use Steam Radar." }, 401);
 
   try {
     const body = await request.json() as SearchRequest;
