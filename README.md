@@ -15,13 +15,13 @@ Steam Radar helps game-marketing teams discover YouTube and Twitch creators cove
 
 ## Use the team build
 
-Open [Steam Radar](https://three-coins-studio.github.io/steam-radar/), enter a Steam game name, choose YouTube, Twitch, or both, and select **Search**.
+Open [Steam Radar](https://three-coins-studio.github.io/steam-radar/) and sign in with an email approved by a maintainer. Steam Radar sends a passwordless sign-in link; public registration is disabled.
 
-The hosted team build is already configured. It does not require an account, API key, Twitch login, Supabase project, or local installation.
+After signing in, enter a Steam game name, choose YouTube, Twitch, or both, and select **Search**. Team members do not need an API key, Twitch login, Supabase project, or local installation.
 
 ## Architecture
 
-GitHub Pages hosts the interface and calls the studio's deployed Supabase Edge Function. The function resolves the name with Steam Store search, enriches the selected app through SteamSpy, and then queries YouTube and Twitch. Provider credentials remain in server-side Function Secrets and never reach the browser.
+GitHub Pages hosts the interface and uses Supabase Auth for passwordless email login. The deployed Edge Function verifies both the user session and the private access whitelist before doing any provider work. It then resolves the name with Steam Store search, enriches the selected app through SteamSpy, and queries YouTube and Twitch. Provider credentials and the whitelist remain server-side and never reach the browser.
 
 ## Local development for maintainers
 
