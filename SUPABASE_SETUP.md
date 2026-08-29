@@ -1,14 +1,12 @@
 # Supabase Maintainer Guide
 
-> **Maintainers only:** The studio backend is already deployed and configured. Team members should use the hosted site and do not need to perform any steps in this document.
+> **Maintainers only:** The studio backend is already configured. Team members only need the hosted site and the shared team password.
 
-Use this guide only when recreating the infrastructure, deploying backend changes, managing approved users, or rotating studio credentials. Steam Radar uses Supabase passwordless authentication and a server-side access whitelist. Provider credentials remain in Function Secrets.
+Steam Radar uses a shared password gate backed by a private bcrypt hash in Postgres. The plaintext password and provider credentials must never be committed to this repository.
 
-## 1. Recreate or link the Supabase project
+## 1. Link the Supabase project
 
-Create a free project at [supabase.com](https://supabase.com), then copy its project reference from **Project Settings → General**.
-
-Install and authenticate the Supabase CLI:
+Create a project if needed, install the CLI, and link the repository:
 
 ```bash
 npm install --global supabase
@@ -16,18 +14,9 @@ supabase login
 supabase link --project-ref YOUR_PROJECT_REF
 ```
 
-## 2. Prepare provider credentials
+## 2. Configure provider credentials
 
-You need:
-
-- A YouTube Data API v3 key. The server key does not need a website-referrer restriction; restrict it to the YouTube Data API.
-- A Twitch application client ID and client secret from the [Twitch Developer Console](https://dev.twitch.tv/console/apps).
-
-Do not commit these values or put them in `config.js`.
-
-## 3. Set Edge Function secrets
-
-Set the provider credentials and the exact browser origins allowed to call the function:
+Create a YouTube Data API v3 key and a Twitch application client ID and secret. Store them, along with the allowed browser origins, as Function Secrets:
 
 ```bash
 supabase secrets set YOUTUBE_API_KEY=YOUR_YOUTUBE_KEY
@@ -38,65 +27,56 @@ supabase secrets set ALLOWED_ORIGINS=https://three-coins-studio.github.io,http:/
 
 `ALLOWED_ORIGINS` is comma-separated and must contain origins only, without paths or trailing slashes.
 
-## 4. Configure authentication
-
-In **Authentication → URL Configuration**, set the Site URL to:
-
-```text
-https://three-coins-studio.github.io/steam-radar/
-```
-
-Add the same URL to the redirect allow list. Keep public user creation disabled in **Authentication → Sign In / Providers**. The frontend also sets `shouldCreateUser: false`, so login can never create a user implicitly.
-
-## 5. Deploy the database migrations and function
+## 3. Apply the database migration
 
 ```bash
 supabase db push
+```
+
+## 4. Set the team password
+
+Choose a unique, randomly generated password of at least 16 characters. In the Supabase SQL editor, replace the placeholder below and run the statement:
+
+```sql
+insert into public.team_access (id, password_hash, updated_at)
+values (
+  1,
+  extensions.crypt('REPLACE_WITH_A_LONG_RANDOM_PASSWORD', extensions.gen_salt('bf', 12)),
+  now()
+)
+on conflict (id) do update
+set password_hash = excluded.password_hash,
+    updated_at = excluded.updated_at;
+```
+
+Only the bcrypt hash is stored. The team enters the original password in the site. It is sent over HTTPS for server-side verification and retained only in that browser tab's `sessionStorage`.
+
+To rotate access, run the same statement with a new password and share it securely with the team. Existing tabs will be rejected on their next API request.
+
+## 5. Deploy the function
+
+Deploy only after the password row exists, so the hosted tool is never left without a valid access password:
+
+```bash
 supabase functions deploy search --no-verify-jwt
 ```
 
-The deployed URL is:
+The function URL is `https://YOUR_PROJECT_REF.supabase.co/functions/v1/search`.
 
-```text
-https://YOUR_PROJECT_REF.supabase.co/functions/v1/search
-```
+## 6. Configure the browser
 
-## 6. Approve a user
-
-Both steps are required for each teammate:
-
-1. In **Authentication → Users**, create or invite the user. This is an administrator-only action.
-2. In the SQL editor, add the same normalized email to the private whitelist:
-
-   ```sql
-   insert into public.access_whitelist (email)
-   values ('teammate@example.com');
-   ```
-
-To revoke access immediately, remove the whitelist row. Deleting or banning the Auth user also prevents future sessions.
-
-```sql
-delete from public.access_whitelist
-where email = 'teammate@example.com';
-```
-
-The table has row-level security enabled and grants no browser role permission. The Edge Function reads it only with its service role.
-
-## 7. Configure a replacement backend URL
-
-Set the public function URL in `config.js`:
+Set the public function URL and publishable key in `config.js`:
 
 ```js
 window.STEAM_RADAR_CONFIG = {
   apiUrl: "https://YOUR_PROJECT_REF.supabase.co/functions/v1/search",
-  supabaseUrl: "https://YOUR_PROJECT_REF.supabase.co",
   publishableKey: "YOUR_SUPABASE_PUBLISHABLE_KEY",
 };
 ```
 
-The URL and publishable key are public client configuration and are safe to publish. Never put a secret or service-role key in this file.
+These values are public client configuration. Never put the team password, a secret key, or a service-role key in this file.
 
-## 8. Test
+## 7. Test
 
 Run the static site locally:
 
@@ -104,10 +84,10 @@ Run the static site locally:
 python -m http.server 5000
 ```
 
-Add `http://localhost:5000` to the Auth redirect allow list while testing. Open it, request a link for an approved email, sign in, select **YouTube + Twitch**, and search. A direct request without a valid approved-user bearer token must return HTTP 401 before calling any provider.
+Open `http://localhost:5000`, confirm that an incorrect password is rejected, then unlock with the team password and run a YouTube + Twitch search. A request without the `X-Access-Password` header must return HTTP 401 before any provider is called.
 
-The function first resolves the game through Steam Store search and caches its SteamSpy metadata for 24 hours. If a content provider fails while the other succeeds, Steam Radar displays the available results and a provider warning. Supabase caches Twitch searches for two minutes and YouTube-only searches for thirty minutes.
+The function resolves games through Steam Store search and caches SteamSpy metadata for 24 hours. If one content provider fails, Steam Radar displays results from the other with a warning. Twitch searches are cached for two minutes and YouTube-only searches for thirty minutes.
 
-## Secret rotation
+## Provider-secret rotation
 
-Rotate a provider credential with the same `supabase secrets set` command. The new value is available to the function without redeploying it. Never place provider credentials in Postgres tables, frontend JavaScript, logs, or Git history.
+Rotate provider credentials with `supabase secrets set`. New values are available to the function without redeploying it. Never place provider credentials in Postgres, frontend JavaScript, logs, or Git history.

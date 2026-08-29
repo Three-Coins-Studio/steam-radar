@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 type JsonRecord = Record<string, unknown>;
 
 type SearchRequest = {
+  action?: "validate_access";
   game_name?: string;
   steam_url?: string;
   platforms?: string[];
@@ -67,7 +68,7 @@ function corsHeaders(request: Request): HeadersInit {
   const allowOrigin = allowed.includes(origin) ? origin : allowed[0] || "";
   return {
     "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
+    "Access-Control-Allow-Headers": "apikey, content-type, x-access-password, x-client-info",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin",
   };
@@ -497,22 +498,12 @@ function supabaseAdmin() {
   return url && key ? createClient(url, key, { auth: { persistSession: false } }) : null;
 }
 
-async function authorizedUser(request: Request): Promise<{ id: string; email: string } | null> {
-  const authorization = request.headers.get("authorization") || "";
-  const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1];
+async function hasTeamAccess(request: Request): Promise<boolean> {
+  const password = request.headers.get("x-access-password") || "";
   const admin = supabaseAdmin();
-  if (!token || !admin) return null;
-
-  const { data: { user }, error } = await admin.auth.getUser(token);
-  const email = user?.email?.trim().toLowerCase() || "";
-  if (error || !user || !email) return null;
-
-  const { data: approved } = await admin
-    .from("access_whitelist")
-    .select("email")
-    .eq("email", email)
-    .maybeSingle();
-  return approved ? { id: user.id, email } : null;
+  if (!admin || password.length < 12 || password.length > 256) return false;
+  const { data, error } = await admin.rpc("verify_team_password", { candidate_password: password });
+  return !error && data === true;
 }
 
 async function cacheKey(value: unknown): Promise<string> {
@@ -546,11 +537,10 @@ Deno.serve(async (request) => {
   const origin = request.headers.get("origin")?.replace(/\/$/, "") || "";
   if (origin && !allowedOrigins().includes(origin)) return json(request, { error: "Origin not allowed." }, 403);
 
-  const user = await authorizedUser(request);
-  if (!user) return json(request, { error: "Sign in with an approved email to use Steam Radar." }, 401);
-
   try {
     const body = await request.json() as SearchRequest;
+    if (!await hasTeamAccess(request)) return json(request, { error: "The team password is incorrect." }, 401);
+    if (body.action === "validate_access") return json(request, { authorized: true });
     const gameQuery = String(body.game_name || "").trim();
     if (!gameQuery) return json(request, { error: "Enter a Steam game name." }, 400);
     const steamGame = await resolveSteamGame(gameQuery);
