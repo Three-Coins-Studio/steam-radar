@@ -2,6 +2,8 @@
 
 Steam Radar helps game-marketing teams discover YouTube and Twitch creators covering a Steam game. Enter a game name to resolve its canonical Steam title, then search videos, VODs, and live streams; compare public performance signals; select creators with publicly listed contact emails; and export outreach data.
 
+For a complete non-technical and technical explanation, architecture diagram, end-to-end user journey, and reusable visual-document prompt, see [PROJECT_WALKTHROUGH.md](PROJECT_WALKTHROUGH.md).
+
 ## Features
 
 - Find a game by name through Steam search and SteamSpy metadata
